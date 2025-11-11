@@ -328,8 +328,9 @@ namespace SimuladorFilaBlazor.Services
                 else if (consulta.Tipo == "Consulta")
                 {
                     TimeSpan horaInicioConsulta;
+                    int duracaoConsulta = TEMPO_PADRAO_CONSULTA + consulta.TempoExtraMinutos;
 
-                    // Se já está em atendimento, manter hora atual e calcular fim baseado no tempo decorrido
+                    // Se já está em atendimento, manter hora de início original
                     if (consulta.Status == "Em Atendimento")
                     {
                         horaInicioConsulta = consulta.HoraInicio ?? _estado.HoraAtual;
@@ -338,39 +339,40 @@ namespace SimuladorFilaBlazor.Services
                             consulta.HoraInicio = _estado.HoraAtual;
                         }
                         
-                        var duracaoConsulta = TEMPO_PADRAO_CONSULTA + consulta.TempoExtraMinutos;
                         consulta.HoraFinal = horaInicioConsulta.Add(TimeSpan.FromMinutes(duracaoConsulta));
                         
                         // Próxima consulta começa após esta
                         horaCorrente = consulta.HoraFinal.Value.Add(TimeSpan.FromMinutes(1));
+                    }
+                    // Se NÃO está no local e tem tempo de chegada > 0
+                    else if (consulta.CheckInNoLocal != "S" && consulta.TempoChegada > 0)
+                    {
+                        // INDIVIDUAL: HoraAtual + TempoChegada (não considera horaCorrente)
+                        horaInicioConsulta = _estado.HoraAtual.Add(TimeSpan.FromMinutes(consulta.TempoChegada));
+                        consulta.HoraInicio = horaInicioConsulta;
+                        consulta.HoraFinal = horaInicioConsulta.Add(TimeSpan.FromMinutes(duracaoConsulta));
+                        
+                        // NÃO avança horaCorrente para não afetar cálculo dos próximos ausentes
+                        // Apenas se for maior que horaCorrente atual
+                        var horaFinalMais1 = consulta.HoraFinal.Value.Add(TimeSpan.FromMinutes(1));
+                        if (horaFinalMais1 > horaCorrente)
+                        {
+                            horaCorrente = horaFinalMais1;
+                        }
                     }
                     // Se está no local ou tempo de chegada é zero
                     else if (consulta.CheckInNoLocal == "S" || consulta.TempoChegada == 0)
                     {
                         horaInicioConsulta = horaCorrente;
                         consulta.HoraInicio = horaInicioConsulta;
-                        
-                        var duracaoConsulta = TEMPO_PADRAO_CONSULTA + consulta.TempoExtraMinutos;
-                        consulta.HoraFinal = horaInicioConsulta.Add(TimeSpan.FromMinutes(duracaoConsulta));
-                        horaCorrente = consulta.HoraFinal.Value.Add(TimeSpan.FromMinutes(1));
-                    }
-                    // Se tem tempo de chegada
-                    else if (consulta.TempoChegada > 0)
-                    {
-                        var horaChegadaPaciente = _estado.HoraAtual.Add(TimeSpan.FromMinutes(consulta.TempoChegada));
-                        horaInicioConsulta = horaCorrente > horaChegadaPaciente ? horaCorrente : horaChegadaPaciente;
-                        consulta.HoraInicio = horaInicioConsulta;
-                        
-                        var duracaoConsulta = TEMPO_PADRAO_CONSULTA + consulta.TempoExtraMinutos;
                         consulta.HoraFinal = horaInicioConsulta.Add(TimeSpan.FromMinutes(duracaoConsulta));
                         horaCorrente = consulta.HoraFinal.Value.Add(TimeSpan.FromMinutes(1));
                     }
                     else
                     {
+                        // Fallback: usar hora corrente
                         horaInicioConsulta = horaCorrente;
                         consulta.HoraInicio = horaInicioConsulta;
-                        
-                        var duracaoConsulta = TEMPO_PADRAO_CONSULTA + consulta.TempoExtraMinutos;
                         consulta.HoraFinal = horaInicioConsulta.Add(TimeSpan.FromMinutes(duracaoConsulta));
                         horaCorrente = consulta.HoraFinal.Value.Add(TimeSpan.FromMinutes(1));
                     }
