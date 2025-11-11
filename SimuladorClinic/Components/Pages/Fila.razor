@@ -1,0 +1,232 @@
+﻿@page "/fila"
+@rendermode InteractiveServer
+@using SimuladorFilaBlazor.Models
+@using SimuladorFilaBlazor.Services
+@inject SimuladorService Simulador
+@implements IDisposable
+
+<PageTitle>Simulador de Fila - Consultas Médicas</PageTitle>
+
+<div class="container-fluid py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                    <h3 class="mb-0">🏥 Simulador de Fila de Consultas Médicas</h3>
+                    <div>
+                        <span class="badge bg-light text-dark fs-5">⏰ @Estado.HoraAtual.ToString(@"hh\:mm")</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <button class="btn btn-success w-100" @onclick="() => Simulador.AvancarTempo(Estado.IncrementoTempo)">
+                                ⏩ Avançar @Estado.IncrementoTempo min
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-info w-100" @onclick="() => Simulador.AvancarTempo(5)">
+                                ⏭️ Avançar 5 min
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-warning w-100" @onclick="() => Simulador.RecalcularFila()">
+                                🔄 Recalcular Fila
+                            </button>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-danger w-100" @onclick="() => Simulador.Reset()">
+                                🔁 Resetar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-9">
+            <div class="card shadow-sm">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0">📋 Fila de Atendimento</h5>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover table-sm mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Fila</th>
+                                    <th>Paciente</th>
+                                    <th>Prioridade</th>
+                                    <th>H.Início</th>
+                                    <th>H.Final</th>
+                                    <th>Local</th>
+                                    <th>Chegada</th>
+                                    <th>Extra</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var consulta in Estado.ListaConsultas.Where(c => c.Desistencia != "S").OrderBy(c => c.Fila))
+                                {
+                                    <tr class="@ObterClasseLinha(consulta)">
+                                        <td><strong>@consulta.Fila</strong></td>
+                                        <td>
+                                            @consulta.Paciente
+                                            @if (!string.IsNullOrEmpty(consulta.PCD))
+                                            {
+                                                <br /><small class="text-muted">@consulta.PCD</small>
+                                            }
+                                        </td>
+                                        <td><span class="badge bg-info">@consulta.PrioridadeEfetiva.ToString("F1")</span></td>
+                                        <td>@(consulta.HoraInicio?.ToString(@"hh\:mm") ?? "-")</td>
+                                        <td>@(consulta.HoraFinal?.ToString(@"hh\:mm") ?? "-")</td>
+                                        <td>
+                                            @if (consulta.Tipo == "Consulta")
+                                            {
+                                                var isChecked = consulta.CheckInNoLocal == "S";
+                                                <input type="checkbox" class="form-check-input"
+                                                       checked="@(consulta.CheckInNoLocal == "S")"
+                                                       @onchange="@((ChangeEventArgs e) => OnCheckInChanged(consulta.Numero, e))" />
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (consulta.Tipo == "Consulta" && consulta.CheckInNoLocal != "S")
+                                            {
+                                                <input type="number" class="form-control form-control-sm" style="width: 70px;"
+                                                       value="@consulta.TempoChegada"
+                                                       @onchange="@((ChangeEventArgs e) => OnTempoChegadaChanged(consulta.Numero, e))" />
+                                            }
+                                            else if (consulta.CheckInNoLocal == "S")
+                                            {
+                                                <span class="text-success">✓</span>
+                                            }
+                                        </td>
+                                        <td>
+                                            @if (consulta.Tipo == "Consulta")
+                                            {
+                                                <input type="number" class="form-control form-control-sm" style="width: 70px;"
+                                                       value="@consulta.TempoExtraMinutos"
+                                                       @onchange="@((ChangeEventArgs e) => OnTempoExtraChanged(consulta.Numero, e))" />
+                                            }
+                                            else
+                                            {
+                                                <span>@consulta.TempoExtraMinutos min</span>
+                                            }
+                                        </td>
+                                        <td><span class="badge @ObterClasseStatus(consulta.Status)">@consulta.Status</span></td>
+                                        <td>
+                                            @if (consulta.Tipo == "Consulta")
+                                            {
+                                                <div class="btn-group btn-group-sm">
+                                                    @if (consulta.Status == "Aberto")
+                                                    {
+                                                        <button class="btn btn-outline-primary btn-sm" 
+                                                                @onclick="() => Simulador.IniciarConsulta(consulta.Numero)">
+                                                            ▶️
+                                                        </button>
+                                                    }
+                                                    @if (consulta.Status == "Em Atendimento")
+                                                    {
+                                                        <button class="btn btn-outline-success btn-sm" 
+                                                                @onclick="() => Simulador.FinalizarConsulta(consulta.Numero)">
+                                                            ✓
+                                                        </button>
+                                                    }
+                                                    @if (consulta.Status != "Finalizado")
+                                                    {
+                                                        <button class="btn btn-outline-danger btn-sm" 
+                                                                @onclick="() => Simulador.MarcarDesistencia(consulta.Numero)">
+                                                            ✕
+                                                        </button>
+                                                    }
+                                                </div>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-lg-3">
+            <div class="card shadow-sm">
+                <div class="card-header bg-dark text-white">
+                    <h5 class="mb-0">📜 Logs de Eventos</h5>
+                </div>
+                <div class="card-body p-2" style="max-height: 600px; overflow-y: auto;">
+                    @foreach (var log in Estado.Logs)
+                    {
+                        <div class="alert alert-sm alert-secondary py-1 px-2 mb-1">
+                            <small>@log</small>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private EstadoFila Estado => Simulador.ObterEstado();
+
+    protected override void OnInitialized()
+    {
+        Simulador.OnChange += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        Simulador.OnChange -= StateHasChanged;
+    }
+
+    private void OnCheckInChanged(int numero, ChangeEventArgs e)
+    {
+        if (e.Value is bool checkIn)
+        {
+            Simulador.AlterarCheckInLocal(numero, checkIn);
+        }
+    }
+
+    private void OnTempoChegadaChanged(int numero, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int tempo))
+        {
+            Simulador.AlterarTempoChegada(numero, tempo);
+        }
+    }
+
+    private void OnTempoExtraChanged(int numero, ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out int tempo))
+        {
+            Simulador.AdicionarTempoExtra(numero, tempo);
+        }
+    }
+
+    private string ObterClasseLinha(Consulta consulta)
+    {
+        if (consulta.Status == "Finalizado") return "table-success";
+        if (consulta.Status == "Em Atendimento") return "table-warning";
+        if (consulta.Tipo == "Descanso") return "table-info";
+        if (consulta.Fila == 1) return "table-primary";
+        return "";
+    }
+
+    private string ObterClasseStatus(string status)
+    {
+        return status switch
+        {
+            "Aberto" => "bg-secondary",
+            "Em Atendimento" => "bg-warning text-dark",
+            "Finalizado" => "bg-success",
+            "Desistente" => "bg-danger",
+            _ => "bg-secondary"
+        };
+    }
+}
