@@ -28,15 +28,15 @@ namespace SimuladorFilaBlazor.Services
                 ListaConsultas = new List<Consulta>
                 {
                     new Consulta { Numero = 1, Paciente = "João Pedro", PCD = "Deficiência Física", Peso = 8, Fila = 1, CheckIn = "S", CheckInNoLocal = "S", Tipo = "Consulta", Status = "Aberto" },
-                    new Consulta { Numero = 2, Paciente = "Maria Cecilia", Peso = 0, Fila = 2, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 30 },
-                    new Consulta { Numero = 3, Paciente = "Jose Silva", Peso = 0, Fila = 3, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 60 },
-                    new Consulta { Numero = 4, Paciente = "Raimunda Gomes", PCD = "Idoso Dependência I", Peso = 5, Fila = 4, CheckIn = "S", CheckInNoLocal = "S", TempoChegada = 40, Tipo = "Consulta", Status = "Aberto" },
+                    new Consulta { Numero = 2, Paciente = "Maria Cecilia", Peso = 0, Fila = 2, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 90 },
+                    new Consulta { Numero = 3, Paciente = "Jose Silva", Peso = 0, Fila = 3, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 90 },
+                    new Consulta { Numero = 4, Paciente = "Raimunda Gomes", PCD = "Idoso Dependência I", Peso = 5, Fila = 4, CheckIn = "S", CheckInNoLocal = "S", TempoChegada = 120, Tipo = "Consulta", Status = "Aberto" },
                     new Consulta { Numero = 5, Paciente = "Camila Pitanga", Peso = 0, Fila = 5, CheckIn = "S", TempoChegada = 10, Tipo = "Consulta", Status = "Aberto" },
-                    new Consulta { Numero = 6, Paciente = "DESCANSO", TempoExtraMinutos = 15, Tipo = "Descanso", Status = "Aberto" },
+                    //new Consulta { Numero = 6, Paciente = "DESCANSO", TempoExtraMinutos = 15, Tipo = "Descanso", Status = "Aberto" },
                     new Consulta { Numero = 7, Paciente = "Michael Jackson", PCD = "Deficiência Múltipla", Peso = 9, Fila = 6, Tipo = "Consulta", Status = "Aberto", TempoChegada = 120 },
-                    new Consulta { Numero = 8, Paciente = "Maria Clara", Fila = 7, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 30 },
-                    new Consulta { Numero = 9, Paciente = "Castanho Gomes", Peso = 0, Fila = 8, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 60 },
-                    new Consulta { Numero = 10, Paciente = "Joaquim Última hora", Peso = 0, Fila = 9, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 10 }
+                    new Consulta { Numero = 8, Paciente = "Maria Clara", Fila = 7, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 90 },
+                    new Consulta { Numero = 9, Paciente = "Castanho Gomes", Peso = 0, Fila = 8, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 90 },
+                    new Consulta { Numero = 10, Paciente = "Joaquim Última hora", Peso = 0, Fila = 9, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 120 }
                 }
             };
             RecalcularFila();
@@ -137,9 +137,43 @@ namespace SimuladorFilaBlazor.Services
             if (consulta != null)
             {
                 consulta.Status = "Finalizado";
-                AdicionarLog($"✅ Consulta finalizada: {consulta.Paciente}");
+                consulta.HoraFinal = _estado.HoraAtual; // Atualiza hora final para o momento atual
+                AdicionarLog($"✅ Consulta finalizada: {consulta.Paciente} às {_estado.HoraAtual:hh\\:mm}");
+                
+                // Ajustar horário da próxima consulta para começar no horário atual
+                AjustarProximaConsulta();
+                
                 RecalcularFila();
                 NotificarMudanca();
+            }
+        }
+
+        private void AjustarProximaConsulta()
+        {
+            // Encontrar a próxima consulta na fila (menor posição, que não esteja finalizada ou em atendimento)
+            var proximaConsulta = _estado.ListaConsultas
+                .Where(c => c.Status == "Aberto" && c.Tipo == "Consulta" && c.Desistencia != "S")
+                .OrderBy(c => c.Fila)
+                .FirstOrDefault();
+
+            if (proximaConsulta != null)
+            {
+                // Se a próxima consulta está no local, ajusta para começar no horário atual + 1 minuto
+                if (proximaConsulta.CheckInNoLocal == "S")
+                {
+                    proximaConsulta.HoraInicio = _estado.HoraAtual.Add(TimeSpan.FromMinutes(1));
+                    AdicionarLog($"📅 Próxima consulta ajustada: {proximaConsulta.Paciente} - Início: {proximaConsulta.HoraInicio:hh\\:mm}");
+                }
+                // Se não está no local, verifica quando chegará
+                else if (proximaConsulta.TempoChegada > 0)
+                {
+                    var horaChegada = _estado.HoraAtual.Add(TimeSpan.FromMinutes(proximaConsulta.TempoChegada));
+                    var horarioDisponivel = _estado.HoraAtual.Add(TimeSpan.FromMinutes(1));
+                    
+                    // Usa o maior entre a hora de chegada e o horário disponível
+                    proximaConsulta.HoraInicio = horaChegada > horarioDisponivel ? horaChegada : horarioDisponivel;
+                    AdicionarLog($"📅 Próxima consulta ajustada: {proximaConsulta.Paciente} - Início: {proximaConsulta.HoraInicio:hh\\:mm} (aguardando chegada)");
+                }
             }
         }
 
@@ -269,20 +303,33 @@ namespace SimuladorFilaBlazor.Services
         {
             var horaCorrente = _estado.HoraAtual;
 
+            // Se houver consulta em atendimento, começar após ela
+            var consultaEmAtendimento = consultasOrdenadas.FirstOrDefault(c => c.Status == "Em Atendimento");
+            if (consultaEmAtendimento != null && consultaEmAtendimento.HoraFinal.HasValue)
+            {
+                horaCorrente = consultaEmAtendimento.HoraFinal.Value.Add(TimeSpan.FromMinutes(1));
+            }
+
             foreach (var consulta in consultasOrdenadas)
             {
+                // Pular consultas finalizadas
+                if (consulta.Status == "Finalizado")
+                {
+                    continue;
+                }
+
                 if (consulta.Tipo == "Descanso")
                 {
                     var duracaoDescanso = consulta.TempoExtraMinutos > 0 ? consulta.TempoExtraMinutos : 15;
                     consulta.HoraInicio = horaCorrente;
                     consulta.HoraFinal = horaCorrente.Add(TimeSpan.FromMinutes(duracaoDescanso));
-                    horaCorrente = consulta.HoraFinal.Value;
+                    horaCorrente = consulta.HoraFinal.Value.Add(TimeSpan.FromMinutes(1)); // +1 minuto
                 }
                 else if (consulta.Tipo == "Consulta")
                 {
                     TimeSpan horaInicioConsulta;
 
-                    // Se já está em atendimento, manter hora atual
+                    // Se já está em atendimento, manter hora atual e calcular fim baseado no tempo decorrido
                     if (consulta.Status == "Em Atendimento")
                     {
                         horaInicioConsulta = consulta.HoraInicio ?? _estado.HoraAtual;
@@ -290,12 +337,22 @@ namespace SimuladorFilaBlazor.Services
                         {
                             consulta.HoraInicio = _estado.HoraAtual;
                         }
+                        
+                        var duracaoConsulta = TEMPO_PADRAO_CONSULTA + consulta.TempoExtraMinutos;
+                        consulta.HoraFinal = horaInicioConsulta.Add(TimeSpan.FromMinutes(duracaoConsulta));
+                        
+                        // Próxima consulta começa após esta
+                        horaCorrente = consulta.HoraFinal.Value.Add(TimeSpan.FromMinutes(1));
                     }
                     // Se está no local ou tempo de chegada é zero
                     else if (consulta.CheckInNoLocal == "S" || consulta.TempoChegada == 0)
                     {
                         horaInicioConsulta = horaCorrente;
                         consulta.HoraInicio = horaInicioConsulta;
+                        
+                        var duracaoConsulta = TEMPO_PADRAO_CONSULTA + consulta.TempoExtraMinutos;
+                        consulta.HoraFinal = horaInicioConsulta.Add(TimeSpan.FromMinutes(duracaoConsulta));
+                        horaCorrente = consulta.HoraFinal.Value.Add(TimeSpan.FromMinutes(1));
                     }
                     // Se tem tempo de chegada
                     else if (consulta.TempoChegada > 0)
@@ -303,20 +360,19 @@ namespace SimuladorFilaBlazor.Services
                         var horaChegadaPaciente = _estado.HoraAtual.Add(TimeSpan.FromMinutes(consulta.TempoChegada));
                         horaInicioConsulta = horaCorrente > horaChegadaPaciente ? horaCorrente : horaChegadaPaciente;
                         consulta.HoraInicio = horaInicioConsulta;
+                        
+                        var duracaoConsulta = TEMPO_PADRAO_CONSULTA + consulta.TempoExtraMinutos;
+                        consulta.HoraFinal = horaInicioConsulta.Add(TimeSpan.FromMinutes(duracaoConsulta));
+                        horaCorrente = consulta.HoraFinal.Value.Add(TimeSpan.FromMinutes(1));
                     }
                     else
                     {
                         horaInicioConsulta = horaCorrente;
                         consulta.HoraInicio = horaInicioConsulta;
-                    }
-
-                    var duracaoConsulta = TEMPO_PADRAO_CONSULTA + consulta.TempoExtraMinutos;
-                    consulta.HoraFinal = horaInicioConsulta.Add(TimeSpan.FromMinutes(duracaoConsulta));
-
-                    // Só avançar hora corrente se não estiver em atendimento
-                    if (consulta.Status != "Em Atendimento")
-                    {
-                        horaCorrente = consulta.HoraFinal.Value;
+                        
+                        var duracaoConsulta = TEMPO_PADRAO_CONSULTA + consulta.TempoExtraMinutos;
+                        consulta.HoraFinal = horaInicioConsulta.Add(TimeSpan.FromMinutes(duracaoConsulta));
+                        horaCorrente = consulta.HoraFinal.Value.Add(TimeSpan.FromMinutes(1));
                     }
                 }
             }
