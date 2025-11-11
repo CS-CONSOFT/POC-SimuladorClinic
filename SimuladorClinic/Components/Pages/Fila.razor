@@ -57,6 +57,7 @@
                             <thead class="table-light">
                                 <tr>
                                     <th>Fila</th>
+                                    <th>Tipo</th>
                                     <th>Paciente</th>
                                     <th>Prioridade</th>
                                     <th>H.Início</th>
@@ -73,6 +74,16 @@
                                 {
                                     <tr class="@ObterClasseLinha(consulta)">
                                         <td><strong>@consulta.Fila</strong></td>
+                                        <td>
+                                            @if (consulta.Tipo == "Descanso")
+                                            {
+                                                <span class="badge bg-info">☕ Descanso</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-primary">🩺 Consulta</span>
+                                            }
+                                        </td>
                                         <td>
                                             @consulta.Paciente
                                             @if (!string.IsNullOrEmpty(consulta.PCD))
@@ -91,6 +102,10 @@
                                                        checked="@(consulta.CheckInNoLocal == "S")"
                                                        @onchange="@((ChangeEventArgs e) => OnCheckInChanged(consulta.Numero, e))" />
                                             }
+                                            else if (consulta.Tipo == "Descanso")
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
                                         </td>
                                         <td>
                                             @if (consulta.Tipo == "Consulta" && consulta.CheckInNoLocal != "S")
@@ -103,6 +118,10 @@
                                             {
                                                 <span class="text-success">✓</span>
                                             }
+                                            else if (consulta.Tipo == "Descanso")
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
                                         </td>
                                         <td>
                                             @if (consulta.Tipo == "Consulta")
@@ -111,16 +130,18 @@
                                                        value="@consulta.TempoExtraMinutos"
                                                        @onchange="@((ChangeEventArgs e) => OnTempoExtraChanged(consulta.Numero, e))" />
                                             }
-                                            else
+                                            else if (consulta.Tipo == "Descanso")
                                             {
-                                                <span>@consulta.TempoExtraMinutos min</span>
+                                                <input type="number" class="form-control form-control-sm" style="width: 70px;"
+                                                       value="@consulta.TempoExtraMinutos"
+                                                       @onchange="@((ChangeEventArgs e) => OnTempoExtraChanged(consulta.Numero, e))" />
                                             }
                                         </td>
                                         <td><span class="badge @ObterClasseStatus(consulta.Status)">@consulta.Status</span></td>
                                         <td>
-                                            @if (consulta.Tipo == "Consulta")
-                                            {
-                                                <div class="btn-group btn-group-sm">
+                                            <div class="btn-group btn-group-sm">
+                                                @if (consulta.Tipo == "Consulta")
+                                                {
                                                     @if (consulta.Status == "Aberto")
                                                     {
                                                         <button class="btn btn-outline-primary btn-sm" 
@@ -142,8 +163,27 @@
                                                             ✕
                                                         </button>
                                                     }
-                                                </div>
-                                            }
+                                                }
+                                                else if (consulta.Tipo == "Descanso")
+                                                {
+                                                    @if (consulta.Status == "Aberto")
+                                                    {
+                                                        <button class="btn btn-outline-info btn-sm" 
+                                                                @onclick="() => Simulador.IniciarConsulta(consulta.Numero)"
+                                                                title="Iniciar Descanso">
+                                                            ▶️ Iniciar
+                                                        </button>
+                                                    }
+                                                    @if (consulta.Status == "Em Atendimento")
+                                                    {
+                                                        <button class="btn btn-outline-success btn-sm" 
+                                                                @onclick="() => Simulador.FinalizarConsulta(consulta.Numero)"
+                                                                title="Finalizar Descanso">
+                                                            ✓ Finalizar
+                                                        </button>
+                                                    }
+                                                }
+                                            </div>
                                         </td>
                                     </tr>
                                 }

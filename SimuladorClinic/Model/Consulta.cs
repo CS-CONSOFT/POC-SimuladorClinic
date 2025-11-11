@@ -15,6 +15,9 @@ namespace SimuladorFilaBlazor.Models
         // Horário de término calculado (HoraInicio + duração)
         public TimeSpan? HoraFinal { get; set; }
         
+        // Horário fixo para descanso (não muda)
+        public TimeSpan? HorarioFixoDescanso { get; set; }
+        
         public int Fila { get; set; }
         public string CheckIn { get; set; }
         public string CheckInNoLocal { get; set; }

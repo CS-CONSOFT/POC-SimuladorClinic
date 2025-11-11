@@ -33,7 +33,7 @@ namespace SimuladorFilaBlazor.Services
                     new Consulta { Numero = 3, Paciente = "Jose Silva", Peso = 0, Fila = 3, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 90 },
                     new Consulta { Numero = 4, Paciente = "Raimunda Gomes", PCD = "Idoso Dependência I", Peso = 5, Fila = 4, CheckIn = "S", CheckInNoLocal = "S", TempoChegada = 120, Tipo = "Consulta", Status = "Aberto" },
                     new Consulta { Numero = 5, Paciente = "Camila Pitanga", Peso = 0, Fila = 5, CheckIn = "S", TempoChegada = 10, Tipo = "Consulta", Status = "Aberto" },
-                    new Consulta { Numero = 6, Paciente = "DESCANSO MÉDICO", TempoExtraMinutos = 15, Tipo = "Descanso", Status = "Aberto", Fila = 6 },
+                    new Consulta { Numero = 6, Paciente = "DESCANSO MÉDICO", TempoExtraMinutos = 15, Tipo = "Descanso", Status = "Aberto", Fila = 6, HorarioFixoDescanso = new TimeSpan(10, 0, 0) }, // Descanso fixo às 10:00
                     new Consulta { Numero = 7, Paciente = "Michael Jackson", PCD = "Deficiência Múltipla", Peso = 9, Fila = 7, Tipo = "Consulta", Status = "Aberto", TempoChegada = 120 },
                     new Consulta { Numero = 8, Paciente = "Maria Clara", Fila = 8, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 90 },
                     new Consulta { Numero = 9, Paciente = "Castanho Gomes", Peso = 0, Fila = 9, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 90 },
@@ -127,6 +127,8 @@ namespace SimuladorFilaBlazor.Services
             if (consulta != null)
             {
                 consulta.Status = "Em Atendimento";
+                consulta.HoraInicio = _estado.HoraAtual; // Registrar hora de início
+                
                 if (consulta.Tipo == "Descanso")
                 {
                     AdicionarLog($"☕ Descanso médico iniciado às {_estado.HoraAtual:hh\\:mm}");
@@ -211,12 +213,12 @@ namespace SimuladorFilaBlazor.Services
                 
                 if (consulta.Tipo == "Descanso")
                 {
-                    var tempoPrevisto = TEMPO_PADRAO_DESCANSO + consulta.TempoExtraMinutos;
-                    if (tempoDecorrido > tempoPrevisto)
+                    var duracaoBase = consulta.TempoExtraMinutos > 0 ? consulta.TempoExtraMinutos : TEMPO_PADRAO_DESCANSO;
+                    
+                    if (tempoDecorrido > duracaoBase)
                     {
-                        var extraDetectado = (int)(tempoDecorrido - tempoPrevisto);
-                        consulta.TempoExtraMinutos = (int)tempoDecorrido - TEMPO_PADRAO_DESCANSO;
-                        AdicionarLog($"⚠️ Descanso prolongado: {consulta.Paciente} - {extraDetectado}min além do previsto");
+                        var extraDetectado = (int)(tempoDecorrido - duracaoBase);
+                        AdicionarLog($"⚠️ Descanso prolongado: {extraDetectado}min além do previsto");
                     }
                 }
                 else
@@ -255,6 +257,7 @@ namespace SimuladorFilaBlazor.Services
                 CalcularPrioridadeEfetiva(consulta);
             }
 
+            // Filtrar apenas itens não finalizados para a fila visual
             var consultasOrdenadas = _estado.ListaConsultas
                 .Where(c => c.Desistencia != "S" && c.Status != "Finalizado")
                 .OrderByDescending(c => c.PrioridadeEfetiva)
@@ -274,7 +277,7 @@ namespace SimuladorFilaBlazor.Services
                 .Where(c => c.Tipo == "Descanso" && c.Status != "Finalizado" && c.Desistencia != "S")
                 .ToList();
 
-            // Criar lista ordenada: primeiro os presentes, depois os ausentes, depois descansos
+            // Criar lista ordenada: primeiro os presentes, depois os ausentes
             var filaOrdenada = new List<Consulta>();
             
             int indexPresente = 0;
@@ -299,7 +302,6 @@ namespace SimuladorFilaBlazor.Services
             }
 
             // Inserir descansos em posições estratégicas (após cada N consultas ou em horário específico)
-            // Por simplicidade, vou adicionar descansos após as 5 primeiras consultas
             var filaComDescanso = new List<Consulta>();
             int consultasAntes = 5; // Número de consultas antes do descanso
             
@@ -319,13 +321,14 @@ namespace SimuladorFilaBlazor.Services
             // Adicionar descansos restantes ao final
             filaComDescanso.AddRange(descansos);
 
-            // Atribuir posições na fila
+            // Atribuir posições na fila (apenas para itens não finalizados)
             int posicaoFila = 1;
             foreach (var consulta in filaComDescanso)
             {
                 consulta.Fila = posicaoFila++;
             }
 
+            // Calcular horários em cascata para TODOS os itens (incluindo finalizados para histórico)
             CalcularHorariosCascata(filaComDescanso);
         }
 
@@ -360,9 +363,19 @@ namespace SimuladorFilaBlazor.Services
 
             // Se houver consulta ou descanso em atendimento, começar após ela
             var itemEmAtendimento = consultasOrdenadas.FirstOrDefault(c => c.Status == "Em Atendimento");
-            if (itemEmAtendimento != null && itemEmAtendimento.HoraFinal.HasValue)
+            if (itemEmAtendimento != null && itemEmAtendimento.HoraInicio.HasValue)
             {
-                horaCorrente = itemEmAtendimento.HoraFinal.Value.Add(TimeSpan.FromMinutes(1));
+                var duracao = itemEmAtendimento.Tipo == "Descanso" 
+                    ? (itemEmAtendimento.TempoExtraMinutos > 0 ? itemEmAtendimento.TempoExtraMinutos : TEMPO_PADRAO_DESCANSO)
+                    : (TEMPO_PADRAO_CONSULTA + itemEmAtendimento.TempoExtraMinutos);
+                
+                var horaFimPrevista = itemEmAtendimento.HoraInicio.Value.Add(TimeSpan.FromMinutes(duracao));
+                
+                // Se a hora prevista de fim é futura, usar ela
+                if (horaFimPrevista > _estado.HoraAtual)
+                {
+                    horaCorrente = horaFimPrevista.Add(TimeSpan.FromMinutes(1));
+                }
             }
 
             foreach (var consulta in consultasOrdenadas)
@@ -375,23 +388,30 @@ namespace SimuladorFilaBlazor.Services
 
                 if (consulta.Tipo == "Descanso")
                 {
-                    // Se já está em atendimento, manter hora atual
+                    // Se já está em atendimento, não recalcular hora de início
                     if (consulta.Status == "Em Atendimento")
                     {
-                        if (!consulta.HoraInicio.HasValue)
-                        {
-                            consulta.HoraInicio = _estado.HoraAtual;
-                        }
+                        // Hora de início já está definida, não alterar
+                        // Calcular apenas hora final baseada na duração
                         var duracaoDescanso = consulta.TempoExtraMinutos > 0 ? consulta.TempoExtraMinutos : TEMPO_PADRAO_DESCANSO;
                         consulta.HoraFinal = consulta.HoraInicio.Value.Add(TimeSpan.FromMinutes(duracaoDescanso));
                         horaCorrente = consulta.HoraFinal.Value.Add(TimeSpan.FromMinutes(1));
                     }
                     else
                     {
-                        // Descanso sempre inicia após a consulta/descanso anterior
+                        // Descanso com horário fixo definido
+                        if (consulta.HorarioFixoDescanso.HasValue)
+                        {
+                            consulta.HoraInicio = consulta.HorarioFixoDescanso.Value;
+                        }
+                        else
+                        {
+                            // Se não tem horário fixo, usar o horário corrente
+                            consulta.HoraInicio = horaCorrente;
+                        }
+                        
                         var duracaoDescanso = consulta.TempoExtraMinutos > 0 ? consulta.TempoExtraMinutos : TEMPO_PADRAO_DESCANSO;
-                        consulta.HoraInicio = horaCorrente;
-                        consulta.HoraFinal = horaCorrente.Add(TimeSpan.FromMinutes(duracaoDescanso));
+                        consulta.HoraFinal = consulta.HoraInicio.Value.Add(TimeSpan.FromMinutes(duracaoDescanso));
                         horaCorrente = consulta.HoraFinal.Value.Add(TimeSpan.FromMinutes(1));
                     }
                 }
@@ -399,15 +419,11 @@ namespace SimuladorFilaBlazor.Services
                 {
                     TimeSpan horaInicioConsulta;
 
-                    // Se já está em atendimento, manter hora atual e calcular fim baseado no tempo decorrido
+                    // Se já está em atendimento, não recalcular hora de início
                     if (consulta.Status == "Em Atendimento")
                     {
-                        horaInicioConsulta = consulta.HoraInicio ?? _estado.HoraAtual;
-                        if (!consulta.HoraInicio.HasValue)
-                        {
-                            consulta.HoraInicio = _estado.HoraAtual;
-                        }
-                        
+                        // Hora de início já está definida, não alterar
+                        horaInicioConsulta = consulta.HoraInicio.Value;
                         var duracaoConsulta = TEMPO_PADRAO_CONSULTA + consulta.TempoExtraMinutos;
                         consulta.HoraFinal = horaInicioConsulta.Add(TimeSpan.FromMinutes(duracaoConsulta));
                         
