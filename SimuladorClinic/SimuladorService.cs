@@ -30,11 +30,11 @@ namespace SimuladorFilaBlazor.Services
                 {
                     new Consulta { Numero = 1, Paciente = "João Pedro", PCD = "Deficiência Física", Peso = 8, Fila = 1, CheckIn = "S", CheckInNoLocal = "S", Tipo = "Consulta", Status = "Aberto" },
                     new Consulta { Numero = 2, Paciente = "Maria Cecilia", Peso = 0, Fila = 2, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 90 },
-                    new Consulta { Numero = 3, Paciente = "Jose Silva", Peso = 0, Fila = 3, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 90 },
+                    new Consulta { Numero = 3, Paciente = "Jose Silva", Peso = 0, Fila = 3, CheckIn = "N", Tipo = "Consulta", Status = "Aberto", TempoChegada = 0 }, // SEM CHECK-IN - Vai para o final da fila
                     new Consulta { Numero = 4, Paciente = "Raimunda Gomes", PCD = "Idoso Dependência I", Peso = 5, Fila = 4, CheckIn = "S", CheckInNoLocal = "S", TempoChegada = 120, Tipo = "Consulta", Status = "Aberto" },
                     new Consulta { Numero = 5, Paciente = "Camila Pitanga", Peso = 0, Fila = 5, CheckIn = "S", TempoChegada = 10, Tipo = "Consulta", Status = "Aberto" },
                     new Consulta { Numero = 6, Paciente = "DESCANSO MÉDICO", TempoExtraMinutos = 15, Tipo = "Descanso", Status = "Aberto", Fila = 6, HorarioFixoDescanso = new TimeSpan(10, 0, 0) }, // Descanso fixo às 10:00
-                    new Consulta { Numero = 7, Paciente = "Michael Jackson", PCD = "Deficiência Múltipla", Peso = 9, Fila = 7, Tipo = "Consulta", Status = "Aberto", TempoChegada = 120 },
+                    new Consulta { Numero = 7, Paciente = "Michael Jackson", PCD = "Deficiência Múltipla", Peso = 9, Fila = 7, Tipo = "Consulta", Status = "Aberto", CheckIn = "S", TempoChegada = 120 },
                     new Consulta { Numero = 8, Paciente = "Maria Clara", Fila = 8, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 90 },
                     new Consulta { Numero = 9, Paciente = "Castanho Gomes", Peso = 0, Fila = 9, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 90 },
                     new Consulta { Numero = 10, Paciente = "Joaquim Última hora", Peso = 0, Fila = 10, CheckIn = "S", Tipo = "Consulta", Status = "Aberto", TempoChegada = 120 }
@@ -77,6 +77,24 @@ namespace SimuladorFilaBlazor.Services
                 consulta.CheckInNoLocal = checkIn ? "S" : "N";
                 if (checkIn) consulta.TempoChegada = 0;
                 AdicionarLog($"📍 {consulta.Paciente} - Check-in no local: {(checkIn ? "SIM" : "NÃO")}");
+                RecalcularFila();
+                NotificarMudanca();
+            }
+        }
+
+        public void AlterarCheckIn(int numero, bool checkIn)
+        {
+            var consulta = _estado.ListaConsultas.FirstOrDefault(c => c.Numero == numero);
+            if (consulta != null)
+            {
+                consulta.CheckIn = checkIn ? "S" : "N";
+                if (!checkIn)
+                {
+                    // Se desmarcar check-in, resetar check-in no local também
+                    consulta.CheckInNoLocal = "N";
+                    consulta.TempoChegada = 0;
+                }
+                AdicionarLog($"📋 {consulta.Paciente} - Check-in geral: {(checkIn ? "REALIZADO" : "NÃO REALIZADO")}");
                 RecalcularFila();
                 NotificarMudanca();
             }
@@ -336,6 +354,13 @@ namespace SimuladorFilaBlazor.Services
         {
             double prioridade = consulta.Peso * 10;
 
+            // PENALIZAR FORTEMENTE quem NÃO fez check-in - vai para o FINAL da fila
+            if (consulta.CheckIn != "S")
+            {
+                prioridade -= 5000; // Penalidade muito alta - vai para o final
+                AdicionarLog($"⚠️ {consulta.Paciente} sem check-in - movido para o final da fila");
+            }
+
             // Priorizar quem está no local
             if (consulta.CheckInNoLocal == "S")
             {
@@ -351,7 +376,7 @@ namespace SimuladorFilaBlazor.Services
             // Bônus para quem está em atendimento
             if (consulta.Status == "Em Atendimento")
             {
-                prioridade += 1000; // Sempre primeiro
+                prioridade += 10000; // Sempre primeiro
             }
 
             consulta.PrioridadeEfetiva = prioridade;

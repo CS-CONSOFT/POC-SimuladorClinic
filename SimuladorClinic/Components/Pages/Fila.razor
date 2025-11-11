@@ -60,6 +60,7 @@
                                     <th>Tipo</th>
                                     <th>Paciente</th>
                                     <th>Prioridade</th>
+                                    <th>Check-in</th>
                                     <th>H.Início</th>
                                     <th>H.Final</th>
                                     <th>Local</th>
@@ -92,6 +93,23 @@
                                             }
                                         </td>
                                         <td><span class="badge bg-info">@consulta.PrioridadeEfetiva.ToString("F1")</span></td>
+                                        <td>
+                                            @if (consulta.Tipo == "Consulta")
+                                            {
+                                                <input type="checkbox" class="form-check-input"
+                                                       checked="@(consulta.CheckIn == "S")"
+                                                       @onchange="@((ChangeEventArgs e) => OnCheckInGeralChanged(consulta.Numero, e))"
+                                                       title="Check-in realizado" />
+                                                @if (consulta.CheckIn != "S")
+                                                {
+                                                    <span class="badge bg-danger ms-1">X</span>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="text-muted">-</span>
+                                            }
+                                        </td>
                                         <td>@(consulta.HoraInicio?.ToString(@"hh\:mm") ?? "-")</td>
                                         <td>@(consulta.HoraFinal?.ToString(@"hh\:mm") ?? "-")</td>
                                         <td>
@@ -230,6 +248,14 @@
         if (e.Value is bool checkIn)
         {
             Simulador.AlterarCheckInLocal(numero, checkIn);
+        }
+    }
+
+    private void OnCheckInGeralChanged(int numero, ChangeEventArgs e)
+    {
+        if (e.Value is bool checkIn)
+        {
+            Simulador.AlterarCheckIn(numero, checkIn);
         }
     }
 
